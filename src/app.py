@@ -51,6 +51,8 @@ def login(credentials: HTTPBasicCredentials = Depends(security)):
         return {"message": "Login successful", "role": role}
     return {"message": "Login as student", "role": role}
 
+# TEST: This is a harmless comment for branch auto-delete workflow testing.
+
 # In-memory activity database
 activities = {
     "Chess Club": {
