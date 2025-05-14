@@ -149,3 +149,13 @@ jobs:
           gh workflow enable "Step 4"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete branch after merge
+        if: github.event.pull_request.merged == true
+        run: |
+          BRANCH_NAME=${{ github.event.pull_request.head.ref }}
+          if [ "$BRANCH_NAME" != "main" ]; then
+            git push origin --delete "$BRANCH_NAME"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
