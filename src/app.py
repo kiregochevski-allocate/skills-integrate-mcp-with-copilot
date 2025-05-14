@@ -5,11 +5,14 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, status, Depends, Cookie
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import os
+import json
 from pathlib import Path
+from typing import Optional
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -18,6 +21,35 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+security = HTTPBasic()
+
+USERS_FILE = os.path.join(current_dir, "users.json")
+
+def load_users():
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
+
+def get_user_role(credentials: HTTPBasicCredentials = Depends(security)):
+    users = load_users()
+    for teacher in users.get("teachers", []):
+        if credentials.username == teacher["username"] and credentials.password == teacher["password"]:
+            return "teacher"
+    for admin in users.get("admins", []):
+        if credentials.username == admin["username"] and credentials.password == admin["password"]:
+            return "admin"
+    for student in users.get("students", []):
+        if credentials.username == student["username"] and credentials.password == student["password"]:
+            return "student"
+    # For demo, fallback to student if not found
+    return "student"
+
+@app.post("/login")
+def login(credentials: HTTPBasicCredentials = Depends(security)):
+    role = get_user_role(credentials)
+    if role in ("teacher", "admin"):
+        return {"message": "Login successful", "role": role}
+    return {"message": "Login as student", "role": role}
 
 # In-memory activity database
 activities = {
@@ -89,8 +121,12 @@ def get_activities():
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, email: str, credentials: Optional[HTTPBasicCredentials] = Depends(security)):
     """Sign up a student for an activity"""
+    role = get_user_role(credentials)
+    if role != "student":
+        raise HTTPException(status_code=403, detail="Only students can sign up themselves.")
+
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -111,8 +147,12 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(activity_name: str, email: str, credentials: Optional[HTTPBasicCredentials] = Depends(security)):
     """Unregister a student from an activity"""
+    role = get_user_role(credentials)
+    if role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Only teachers or admins can unregister students.")
+
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
